@@ -1,1 +1,25 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# ML Datasets & Models
+wlasl_dataset/videos/
+wlasl_dataset/landmark_sequences/
+*.h5
+*.pkl
+ml_training/output/
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
