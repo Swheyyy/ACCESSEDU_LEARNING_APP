@@ -68,6 +68,7 @@ This will:
 3. Train a CNN-LSTM model with MobileNetV2 backbone
 4. Save the best model and training logs
 
+
 ### Custom Training
 Edit `config.py` to customize:
 - `NUM_CLASSES`: 100, 300, 1000, or 2000
@@ -138,7 +139,7 @@ print(f"Confidence: {result['top_prediction']['confidence']:.2%}")
 Input (30, 224, 224, 3)
     ↓
 TimeDistributed(MobileNetV2)
-    ↓
+    ↓ 
 LSTM(256) → LSTM(128)
     ↓
 Dense(512) → Dense(256)
