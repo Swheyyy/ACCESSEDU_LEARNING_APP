@@ -7,6 +7,9 @@ type AccessibilitySettings = {
   highContrast: boolean;
   screenReaderMode: boolean;
   reducedMotion: boolean;
+  signLanguageMode: boolean;
+  visualMode: boolean;
+  simplifiedMode: boolean;
 };
 
 type AccessibilityContextType = {
@@ -15,6 +18,9 @@ type AccessibilityContextType = {
   toggleHighContrast: () => void;
   toggleScreenReaderMode: () => void;
   toggleReducedMotion: () => void;
+  toggleSignLanguageMode: () => void;
+  toggleVisualMode: () => void;
+  toggleSimplifiedMode: () => void;
 };
 
 const defaultSettings: AccessibilitySettings = {
@@ -22,6 +28,9 @@ const defaultSettings: AccessibilitySettings = {
   highContrast: false,
   screenReaderMode: false,
   reducedMotion: false,
+  signLanguageMode: true,
+  visualMode: true,
+  simplifiedMode: false,
 };
 
 const AccessibilityContext = createContext<AccessibilityContextType | undefined>(undefined);
@@ -67,6 +76,18 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
     setSettings(prev => ({ ...prev, reducedMotion: !prev.reducedMotion }));
   };
 
+  const toggleSignLanguageMode = () => {
+    setSettings(prev => ({ ...prev, signLanguageMode: !prev.signLanguageMode }));
+  };
+
+  const toggleVisualMode = () => {
+    setSettings(prev => ({ ...prev, visualMode: !prev.visualMode }));
+  };
+
+  const toggleSimplifiedMode = () => {
+    setSettings(prev => ({ ...prev, simplifiedMode: !prev.simplifiedMode }));
+  };
+
   return (
     <AccessibilityContext.Provider
       value={{
@@ -75,6 +96,9 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
         toggleHighContrast,
         toggleScreenReaderMode,
         toggleReducedMotion,
+        toggleSignLanguageMode,
+        toggleVisualMode,
+        toggleSimplifiedMode,
       }}
     >
       {children}

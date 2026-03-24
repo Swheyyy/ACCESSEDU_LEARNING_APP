@@ -191,6 +191,49 @@ export default function StudentDashboard() {
                 </header>
 
                 <div className="p-6 lg:p-10 space-y-8 max-w-7xl mx-auto">
+                    
+                    {/* Gamification Dashboard TopBar */}
+                    <div className="grid lg:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <Card className="col-span-1 lg:col-span-2 shadow-xl border-none bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-[2rem] overflow-hidden relative">
+                            <div className="absolute top-0 right-0 p-8 opacity-10">
+                                <Trophy className="w-32 h-32" />
+                            </div>
+                            <CardContent className="p-8 relative z-10 flex flex-col justify-between h-full">
+                                <div>
+                                    <Badge className="bg-white/20 hover:bg-white/30 text-white border-none mb-4">Level 3: Sign Master</Badge>
+                                    <h2 className="text-3xl font-black mb-1">Keep it up, {user?.name?.split(' ')[0]}!</h2>
+                                    <p className="text-blue-100 font-medium opacity-90">You are 150 XP away from the next tier.</p>
+                                </div>
+                                <div className="mt-8 space-y-3">
+                                    <div className="flex justify-between text-sm font-bold">
+                                        <span>450 XP</span>
+                                        <span>600 XP</span>
+                                    </div>
+                                    <Progress value={75} className="h-4 bg-black/20 [&>div]:bg-white rounded-full" />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="shadow-lg border-none rounded-[2rem] bg-orange-50/50 relative overflow-hidden group">
+                            <CardContent className="p-8 flex flex-col items-center justify-center h-full text-center">
+                                <div className="w-16 h-16 rounded-full bg-orange-100 text-orange-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner">
+                                    <TrendingUp className="w-8 h-8" />
+                                </div>
+                                <h3 className="text-4xl font-black text-slate-800">5 <span className="text-xl text-slate-400">Days</span></h3>
+                                <p className="font-bold text-orange-600 mt-1">Learning Streak</p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="shadow-lg border-none rounded-[2rem] bg-purple-50/50 relative overflow-hidden group">
+                            <CardContent className="p-8 flex flex-col items-center justify-center h-full text-center">
+                                <div className="w-16 h-16 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner">
+                                    <Star className="w-8 h-8" />
+                                </div>
+                                <h3 className="text-4xl font-black text-slate-800">4</h3>
+                                <p className="font-bold text-purple-600 mt-1">Badges Earned</p>
+                            </CardContent>
+                        </Card>
+                    </div>
 
                     {activeTab === "course" && (
                         <div className="space-y-6">
@@ -240,6 +283,19 @@ export default function StudentDashboard() {
 
                                 <div className="grid lg:grid-cols-3 gap-8">
                                 <div className="lg:col-span-2 space-y-4">
+                                    {/* Emotion-Aware Learning Alert */}
+                                    <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl flex items-start gap-4 shadow-sm animate-in slide-in-from-top-2">
+                                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                            <BrainCircuit className="w-5 h-5 text-red-600 animate-pulse" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-red-800 tracking-tight">AI Intervention Triggered</h4>
+                                            <p className="text-sm font-medium text-red-700/80 mt-1">
+                                                We noticed you spent 3x longer on the last quiz and got sequential incorrect answers. Would you like to switch to <strong className="font-extrabold cursor-pointer border-b-2 border-red-300 hover:text-red-900 transition-colors">Simplified Mode</strong> or view a <strong className="font-extrabold cursor-pointer border-b-2 border-red-300 hover:text-red-900 transition-colors">Step-by-Step Visualization</strong>?
+                                            </p>
+                                        </div>
+                                    </div>
+
                                     <Card className="overflow-hidden border-2 border-blue-100/50 shadow-2xl group">
                                         <div className="relative aspect-video bg-black rounded-t-xl">
                                             <div className="absolute inset-0 flex items-center justify-center bg-slate-900 group-hover:bg-slate-800 transition-colors">
@@ -339,22 +395,25 @@ export default function StudentDashboard() {
                                 </div>
 
                                 <div className="space-y-6">
-                                    <Card className="h-full border-none shadow-xl bg-gradient-to-br from-white to-blue-50/30">
+                                    <Card className="h-full border-none shadow-xl bg-gradient-to-br from-white to-indigo-50/50">
                                         <CardHeader>
-                                            <CardTitle className="flex items-center gap-2"><BookOpen className="w-5 h-5 text-blue-600" /> Visual Notes</CardTitle>
-                                            <CardDescription>Simplified content for quick review.</CardDescription>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-none"><Sparkles className="w-3 h-3 mr-1" /> AI Generated</Badge>
+                                            </div>
+                                            <CardTitle className="text-2xl font-black text-indigo-900 tracking-tight">Visual Concept Engine</CardTitle>
+                                            <CardDescription className="font-medium text-slate-500">Our AI has translated this lesson into visual infographics to aid comprehension.</CardDescription>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
-                                            <div className="p-4 bg-white rounded-2xl border border-slate-100 space-y-3 shadow-sm">
+                                            <div className="p-4 bg-white/80 backdrop-blur-sm rounded-[2rem] border border-white space-y-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
-                                                    <span className="font-bold">Gravity Concept</span>
+                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black shadow-inner">1</div>
+                                                    <span className="font-bold text-lg text-slate-800">Gravity Mechanics</span>
                                                 </div>
-                                                <div className="bg-slate-50 p-6 rounded-xl flex flex-col items-center gap-3 border border-slate-100">
-                                                    <div className="flex gap-4 items-center">
-                                                        <span className="text-4xl">🌎</span>
-                                                        <span className="text-xl text-slate-300">⬅</span>
-                                                        <span className="text-4xl shrink-0">🍏</span>
+                                                <div className="bg-slate-50/50 p-6 rounded-2xl flex flex-col items-center gap-3 border border-slate-100 shadow-inner">
+                                                    <div className="flex gap-4 items-center animate-pulse">
+                                                        <span className="text-5xl">🌎</span>
+                                                        <span className="text-2xl font-black text-slate-300">⬅</span>
+                                                        <span className="text-5xl shrink-0">🍏</span>
                                                     </div>
                                                     <p className="text-xs text-center font-medium text-slate-500 uppercase tracking-wider">Earth pulls things down.</p>
                                                 </div>

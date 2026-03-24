@@ -21,7 +21,7 @@ import {
     Clock, Video, FileText, Bot, BarChart3,
     Mic, MessageSquare, PlusCircle, LayoutDashboard,
     LogOut, Settings, Users2, BrainCircuit, Activity,
-    Sparkles, Star, User, Loader2
+    Sparkles, Star, User, Loader2, TrendingUp
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -166,6 +166,44 @@ export default function TeacherDashboard() {
                 </header>
 
                 <div className="p-8 lg:p-12 space-y-10 max-w-7xl mx-auto">
+                    {activeTab === "dashboard" && (
+                        <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+                            <div>
+                                <h2 className="text-4xl font-black tracking-tight">Command Center</h2>
+                                <p className="text-slate-500 font-medium">Platform engagement and doubt priorities at a glance.</p>
+                            </div>
+                            
+                            <div className="grid lg:grid-cols-3 gap-6">
+                                <Card className="p-8 border-none shadow-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white rounded-[2.5rem]">
+                                    <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
+                                        <Users2 className="w-8 h-8" />
+                                    </div>
+                                    <h3 className="text-5xl font-black">12</h3>
+                                    <p className="font-bold opacity-90 mt-2">Active Students Today</p>
+                                </Card>
+
+                                <Card className="p-8 border-none shadow-xl bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-[2.5rem] ring-4 ring-red-500/20">
+                                    <div className="flex justify-between items-start">
+                                        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
+                                            <BrainCircuit className="w-8 h-8 animate-pulse" />
+                                        </div>
+                                        <Badge className="bg-white text-red-600 border-none font-bold uppercase tracking-widest text-[10px]">High Priority</Badge>
+                                    </div>
+                                    <h3 className="text-5xl font-black">{doubts.filter(d => !d.response).length}</h3>
+                                    <p className="font-bold opacity-90 mt-2 text-red-50">Doubts Needing Intervention</p>
+                                    <p className="text-xs text-red-100 mt-4 italic">2 students exhibiting high emotional struggle flags.</p>
+                                </Card>
+
+                                <Card className="p-8 border-none shadow-xl bg-slate-900 text-white rounded-[2.5rem]">
+                                    <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-6">
+                                        <TrendingUp className="w-8 h-8 text-green-400" />
+                                    </div>
+                                    <h3 className="text-5xl font-black">84%</h3>
+                                    <p className="font-bold opacity-90 mt-2">Avg. Course Completion</p>
+                                </Card>
+                            </div>
+                        </div>
+                    )}
 
                     {activeTab === "courses" && (
                         <div className="space-y-8 animate-in fade-in duration-500">

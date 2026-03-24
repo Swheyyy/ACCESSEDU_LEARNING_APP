@@ -17,6 +17,11 @@ export const users = pgTable("users", {
   userType: userTypeEnum("user_type").default("student"),
   profilePic: text("profile_pic"),
   preferences: jsonb("preferences").default({}),
+  xp: integer("xp").default(0),
+  streak: integer("streak").default(0),
+  badges: jsonb("badges").default([]),
+  emotionFlags: jsonb("emotion_flags").default({}),
+  lastLoginDate: timestamp("last_login_date"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
