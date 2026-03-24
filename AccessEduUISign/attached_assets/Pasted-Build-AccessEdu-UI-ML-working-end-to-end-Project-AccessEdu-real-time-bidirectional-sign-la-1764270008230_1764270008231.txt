@@ -1,0 +1,119 @@
+Build AccessEdu (UI + ML working end-to-end)
+
+Project: AccessEdu — real-time bidirectional sign language translation (sign → text/audio; text/audio → sign video), with progress recording & accessibility-first UI.
+
+Primary goals (deliverables):
+
+Fully working frontend UI (React + Tailwind) for landing page, auth mock, accessibility toggles, sign recognition screen with webcam capture, translation history, and controls (Start/Pause, Save, Listen).
+
+End-to-end ML pipeline that recognizes letters, words, and short sentences from video frames or real-time camera input of sign language action and provides text + audio output; demo model must run in-browser via TensorFlow.js and a server-side WebSocket fallback for heavier models.
+
+Persistence of translations and progress in PostgreSQL (translations: text, confidence, source, timestamp, thumbnail/audio references).
+
+TTS generation for recognized text (local demo + cloud-ready hooks), and audio playback on frontend.
+
+Dockerized repo with frontend/, backend/, ml/, docker-compose.yml, README, and basic tests.
+
+Stack (use these tech choices unless blocked):
+
+Frontend: React (Vite) + TailwindCSS + TensorFlow.js + Video.js for playback
+
+Backend: Python FastAPI + Uvicorn + WebSockets
+
+Dataset: Kaggle(WLASL)
+
+DB: PostgreSQL + SQLAlchemy (Alembic for migrations)
+
+Cache: Redis optional
+
+ML: TensorFlow for training/export → convert to TF.js (prefer lightweight model for client)
+
+TTS: pyttsx3 for local demo; cloud TTS integration hooks (AWS Polly / Azure) for production
+
+Container: Docker + docker-compose
+
+Acceptance criteria (what to expect when finished):
+
+Landing page with logo, hero banner, feature summary, CTAs (“Get Started”, “Explore Features”), accessibility toggle (font size/contrast/TTS), demo video placeholder.
+
+Auth mock including user type selection (Deaf, Non-Signer, Teacher/Admin, Elderly/Visually-Challenged).
+
+“Sign Recognition” screen: live webcam feed, real-time recognized text overlay, confidence score, Start/Pause, Save (persist translation), Listen (play TTS), accessible controls and ARIA labels.
+
+TF.js model loaded in frontend (/models/sign_model/model.json) performing frame-level or short-sequence inference; if TF.js inference fails or model too heavy, automatic fallback to WebSocket server inference (/ws/translate).
+
+Backend endpoints:
+
+POST /api/translations — save translation, generate TTS audio, return audio URL and record id.
+
+GET /api/translations?userId=... — list history.
+
+WS /ws/translate — accept base64 frames, return {text, confidence} JSON in real time.
+
+ML deliverables:
+
+ml/train.py training script for a CNN+LSTM or CNN+Transformer sequence model on sequence data, saving a SavedModel.
+
+Conversion command and instructions to convert SavedModel → TF.js model and place under frontend/public/models/sign_model/.
+
+Guidance recommending MediaPipe keypoints preprocessing for browser performance and reduced model size.
+
+Persistence: translations table with fields {id, user_id, text, confidence, source, thumbnail_path, audio_path, created_at} and migration scripts.
+
+Security & privacy: Consent modal before camera usage, secure storage for media and env secrets, HTTPS required in production.
+
+Tests: basic unit test for model inference, integration test for POST /api/translations, and an end-to-end smoke test instruction.
+
+Milestones & tasks (phase plan):
+
+Frontend scaffold: landing, auth mock, accessibility modal, SignCapture component with TF.js example.
+
+ML baseline: small model training script, dummy dataset generator, export SavedModel.
+
+Inference integration: TF.js client inference + WebSocket server fallback.
+
+Persistence & TTS: implement translations REST + audio generation; attach audio URLs to history.
+
+Dockerize & docs: docker-compose, README, runbook, and sample dataset instructions.
+
+ML constraints & best practices:
+
+Start with a small model convertible to TF.js; use MediaPipe keypoints or frame encoder to reduce size; prefer frame-level classifier for letters and short sequence model for words/sentences.
+
+Data augmentation (brightness, crop, speed/time-warp for sequences).
+
+Report metrics: per-class accuracy, confusion matrix, word-error-rate (WER) for sentences, and inference latency (ms) for browser vs server.
+
+Provide fallback to server inference automatically and include instructions to upgrade to GPU-backed server model.
+
+Integration notes & dev workflow:
+
+Frontend development: npm run dev (Vite). Expect TF.js model at /models/sign_model/model.json.
+
+Backend dev: uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000.
+
+Train & export: run python ml/train.py to produce SavedModel at ml/saved_models/sign_seq. Convert with tensorflowjs_converter --input_format=tf_saved_model --output_format=tfjs_graph_model ml/saved_models/sign_seq frontend/public/models/sign_model.
+
+Local compose: docker-compose up --build to run frontend, backend, postgres (and redis if used).
+
+Deliverables to return (explicit):
+
+A git repo structure containing frontend/, backend/, ml/, docker-compose.yml, README.md with exact start/convert/test commands, and a tiny pre-trained demo model or download script for one.
+
+Example label map and sample dataset loader for ASL alphabet + small word dataset, plus instructions to swap datasets for other sign languages.
+
+Runbook describing how to test webcam recognition, how to switch to server fallback, and how to measure latency and accuracy.
+
+Privacy & compliance:
+
+Consent modal and opt-in for storage of media; ability to delete translation history; guidance for GDPR/CCPA compliance and secure media storage (S3 with signed URLs).
+
+What to expect after running:
+
+A working demo where a webcam performs real-time sign recognition, displays text + confidence, generates playable audio, and saves translation history. TF.js runs in-browser for low-latency demos; heavier production models should run on GPU backends accessible via WebSocket fallback. Documentation will explain how to train, convert, and deploy to cloud GPU nodes.
+
+Security reminder:
+
+Use env vars for secrets, serve media from authenticated endpoints or signed URLs, and never store camera streams without explicit user consent.
+
+Run this prompt to generate the full codebase, assets, and instructions de
