@@ -60,23 +60,32 @@ class SignLanguageModel:
         else:
             raise ValueError(f"Unknown backbone: {cnn_backbone}")
         
-        # Freeze base model initially
-        base_model.trainable = False
+        # 1. Fine-tune the top layers of the backbone for maximum accuracy (>90%)
+        # This allows the model to learn specific hand signs instead of generic ImageNet features.
+        base_model.trainable = True
+        # Freeze all layers except the top 30 to prevent overfitting and catastrophic forgetting
+        for layer in base_model.layers[:-30]:
+            layer.trainable = False
         
         # Apply CNN to each frame
         x = layers.TimeDistributed(base_model)(inputs)
+        
+        # 2. Bidirectional LSTM layers (looks backwards and forwards in time)
+        # Proven to significantly boost accuracy in video action recognition tests
+        x = layers.Bidirectional(layers.LSTM(lstm_units, return_sequences=True))(x)
+        x = layers.Dropout(dropout_rate)(x)
+        x = layers.Bidirectional(layers.LSTM(lstm_units // 2))(x)
         x = layers.Dropout(dropout_rate)(x)
         
-        # LSTM layers for temporal modeling
-        x = layers.LSTM(lstm_units, return_sequences=True)(x)
-        x = layers.Dropout(dropout_rate)(x)
-        x = layers.LSTM(lstm_units // 2)(x)
+        # 3. Dense layers with L2 Regularization & Batch Normalization
+        # Prevents overfitting and speeds up convergence
+        from tensorflow.keras.regularizers import l2
+        x = layers.Dense(512, activation='relu', kernel_regularizer=l2(0.001))(x)
+        x = layers.BatchNormalization()(x)
         x = layers.Dropout(dropout_rate)(x)
         
-        # Dense layers
-        x = layers.Dense(512, activation='relu')(x)
-        x = layers.Dropout(dropout_rate)(x)
-        x = layers.Dense(256, activation='relu')(x)
+        x = layers.Dense(256, activation='relu', kernel_regularizer=l2(0.001))(x)
+        x = layers.BatchNormalization()(x)
         x = layers.Dropout(dropout_rate)(x)
         
         # Output layer

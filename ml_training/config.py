@@ -28,8 +28,8 @@ NUM_CLASSES = 100  # Start with 100 classes, can scale to 300, 1000, 2000
 SEQUENCE_LENGTH = 30  # Number of frames per video
 IMG_SIZE = 224  # Image size for CNN input
 BATCH_SIZE = 16
-EPOCHS = 50
-LEARNING_RATE = 0.001
+EPOCHS = 60
+LEARNING_RATE = 0.0001
 
 # Data split
 TRAIN_SPLIT = 0.7
