@@ -33,7 +33,7 @@ import {
   Mic,
   Download,
 } from "lucide-react";
-import type { Translation, InputType } from "@shared/schema";
+import type { Translation } from "@shared/schema";
 
 type RecognitionResult = {
   text: string;

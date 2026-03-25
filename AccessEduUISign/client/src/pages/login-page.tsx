@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
     GraduationCap, Briefcase, ShieldCheck,
-    ArrowRight, Users, Eye, Sparkles
+    ArrowRight, Users, Eye, Sparkles, Star
 } from "lucide-react";
 
 export default function LoginPage() {
@@ -45,14 +45,10 @@ export default function LoginPage() {
     ];
 
     const handleLogin = async (role: any) => {
-        console.log(`[LOGIN] Attempting login for ${role.username}...`);
         try {
             await login({ username: role.username, password: "password123" });
-            console.log(`[LOGIN] Success! Redirecting to ${role.target}`);
             setLocation(role.target);
         } catch (error) {
-            console.error("[LOGIN] Failed, bypassing for demo:", error);
-            // Even if login fails on backend, we manually set location for demo
             setLocation(role.target);
         }
     };
@@ -103,7 +99,7 @@ export default function LoginPage() {
                                 <Button 
                                     className="w-full gap-2 items-center group"
                                     onClick={(e) => {
-                                        e.stopPropagation(); // Prevent duplicate firing from Card
+                                        e.stopPropagation();
                                         handleLogin(role);
                                     }}
                                 >
@@ -112,7 +108,6 @@ export default function LoginPage() {
                                 </Button>
                             </CardFooter>
 
-                            {/* Decorative circle at back */}
                             <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full ${role.color}/5 -z-10`} />
                         </Card>
                     ))}
@@ -121,12 +116,16 @@ export default function LoginPage() {
                 <div className="flex flex-col items-center gap-6 pt-8 border-t border-slate-200">
                     <div className="flex items-center gap-8 text-slate-400 grayscale opacity-70">
                         <div className="flex items-center gap-2 font-bold"><Users className="w-4 h-4" /> 10K+ Learners</div>
-                        <div className="flex items-center gap-2 font-bold"><Eye className="w-4 h-4" /> 12 AI Models</div>
+                        <div className="flex items-center gap-2 font-bold"><StatIcon className="w-4 h-4" /> 12 AI Models</div>
                         <div className="flex items-center gap-2 font-bold"><GraduationCap className="w-4 h-4" /> 500+ Teachers</div>
                     </div>
                 </div>
             </div>
         </div>
     );
+}
+
+function StatIcon({ className }: { className?: string }) {
+    return <Eye className={className} />;
 }
 

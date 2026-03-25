@@ -41,7 +41,9 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import type { Translation, InputType } from "@shared/schema";
+import type { Translation } from "@shared/schema";
+
+type InputType = "webcam" | "video" | "image";
 
 const inputTypeIcons = {
   webcam: Camera,

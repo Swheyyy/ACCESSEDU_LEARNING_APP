@@ -13,6 +13,7 @@ const httpServer = createServer(app);
 
 // Serve WLASL videos as static assets
 app.use("/videos", express.static(path.join(process.cwd(), "..", "wlasl_dataset", "videos")));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Extend IncomingMessage to hold rawBody
 declare module "http" {

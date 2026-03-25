@@ -9,6 +9,13 @@ import time
 import numpy as np
 import cv2
 import mediapipe as mp
+try:
+    import mediapipe.solutions.hands as mp_hands
+    import mediapipe.solutions.drawing_utils as mp_drawing
+except (ImportError, AttributeError):
+    # Older or alternative structure
+    from mediapipe.python.solutions import hands as mp_hands
+    from mediapipe.python.solutions import drawing_utils as mp_drawing
 import tensorflow as tf
 from tensorflow import keras
 import traceback
@@ -40,7 +47,7 @@ class LandmarkPredictor:
         self.sequence_length = self.metadata.get('sequence_length', 64)
         self.num_landmarks = self.metadata.get('num_landmarks', 63) # 21 * 3
         
-        self.mp_hands = mp.solutions.hands
+        self.mp_hands = mp_hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=1,
@@ -177,6 +184,19 @@ def main():
         return
 
     model_dir = sys.argv[1]
+    # Model discovery
+    if not os.path.exists(os.path.join(model_dir, 'model.h5')):
+        # Search for subdirectories in models/
+        search_path = os.path.join(model_dir, 'models') if os.path.exists(os.path.join(model_dir, 'models')) else model_dir
+        subdirs = [os.path.join(search_path, d) for d in os.listdir(search_path) if os.path.isdir(os.path.join(search_path, d))]
+        subdirs.sort(reverse=True) # Likely latest first
+        
+        for sd in subdirs:
+            if os.path.exists(os.path.join(sd, 'model.h5')):
+                model_dir = sd
+                print(f"AUTO-DISCOVERED MODEL: {model_dir}", file=sys.stderr, flush=True)
+                break
+
     try:
         predictor = LandmarkPredictor(model_dir)
     except Exception as e:
@@ -197,16 +217,16 @@ def main():
             ipath = data.get("data")
             
             if not ipath or not os.path.exists(ipath):
-                print(json.dumps({"id": req_id, "success": False, "error": "File not found"}), file=sys.stderr, flush=True)
+                print(json.dumps({"id": req_id, "success": False, "error": f"File not found: {ipath}"}), file=sys.stdout, flush=True)
                 continue
                 
             result = predictor.predict(ipath, itype)
             result["id"] = req_id
-            print(json.dumps(result), file=sys.stderr, flush=True)
+            print(json.dumps(result), file=sys.stdout, flush=True)
             
         except Exception as e:
-            print(json.dumps({"id": req_id, "success": False, "error": str(e)}), file=sys.stderr, flush=True)
-            traceback.print_exc(file=sys.stderr)
+            print(json.dumps({"id": req_id, "success": False, "error": str(e)}), file=sys.stdout, flush=True)
+            # traceback.print_exc(file=sys.stderr)
 
 if __name__ == "__main__":
     main()

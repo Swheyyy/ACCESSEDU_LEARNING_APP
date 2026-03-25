@@ -31,6 +31,9 @@ import {
   Eye,
   Keyboard,
   Gauge,
+  Star,
+  GraduationCap,
+  Camera,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -44,23 +47,9 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const getNavItems = () => {
-    const items = [{ href: "/", label: "Home", icon: Home }];
-
-    if (isAuthenticated && user) {
-      if (user.userType === "teacher_admin") {
-        items.push({ href: "/teacher-dashboard", label: "Dashboard", icon: Monitor });
-      } else if (user.userType === "non_signer") {
-        items.push({ href: "/text-to-sign", label: "Text to Sign", icon: Keyboard });
-      } else {
-        items.push({ href: "/recognize", label: "Recognize", icon: Hand });
-        items.push({ href: "/history", label: "History", icon: History });
-      }
-    } else {
-      // Default items for guests
-      items.push({ href: "/recognize", label: "Recognize", icon: Hand });
-    }
-
-    return items;
+    return [
+      { href: "/", label: "Home", icon: Home },
+    ];
   };
 
   const currentNavItems = getNavItems();
@@ -69,10 +58,10 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60" role="banner">
       <div className="max-w-7xl mx-auto flex h-16 items-center justify-between px-4 md:px-6 gap-4">
         <Link href="/" className="flex items-center gap-2" data-testid="link-logo">
-          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground shadow-lg transform hover:scale-110 transition-transform">
             <Hand className="h-6 w-6" aria-hidden="true" />
           </div>
-          <span className="font-semibold text-xl hidden sm:inline-block">AccessEdu</span>
+          <span className="font-bold text-2xl hidden sm:inline-block tracking-tight">AccessEdu</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-1" role="navigation" aria-label="Main navigation">
@@ -91,6 +80,14 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {!isAuthenticated && (
+            <Link href="/auth">
+              <Button variant="default" className="hidden sm:flex" data-testid="button-sign-in">
+                Sign In
+              </Button>
+            </Link>
+          )}
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" data-testid="button-theme-toggle" aria-label="Toggle theme">
@@ -207,11 +204,7 @@ export function Header() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : (
-            <Link href="/auth">
-              <Button data-testid="button-get-started">Get Started</Button>
-            </Link>
-          )}
+          ) : null}
 
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild className="md:hidden">

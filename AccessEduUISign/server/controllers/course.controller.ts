@@ -15,6 +15,12 @@ export class CourseController {
         res.json({ ...course, lessons });
     }
 
+    static async getLessons(req: any, res: Response) {
+        const courseId = Number(req.params.id);
+        const lessons = await storage.getLessons(courseId);
+        res.json(lessons);
+    }
+
     static async create(req: any, res: Response) {
         const teacherId = req.user.id;
         console.log("Teacher ID:", teacherId);

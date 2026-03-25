@@ -42,6 +42,8 @@ export const lessons = pgTable("lessons", {
   videoUrl: text("video_url"),
   captionsUrl: text("captions_url"),
   signVideoUrl: text("sign_video_url"),
+  transcript: text("transcript"),
+  processingStatus: text("processing_status").default("pending"),
   resources: jsonb("resources").default([]),
   order: integer("order").notNull(),
 });

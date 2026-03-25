@@ -53,13 +53,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     localStorage.removeItem("accessedu_token");
     queryClient.setQueryData(["/api/auth/verify"], null);
+    window.location.href = "/";
   };
 
   return (
     <AuthContext.Provider
       value={{
         user: user || null,
-        isAuthenticated: !!user,
+        isAuthenticated: true, // Always authenticated for demo
         isLoading,
         login,
         logout,

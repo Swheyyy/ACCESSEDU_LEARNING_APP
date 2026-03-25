@@ -1,107 +1,122 @@
+import { useState } from "react";
 import { useLocation } from "wouter";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
-import type { UserType } from "@shared/schema";
-import { Hand, Users, GraduationCap, Eye, ArrowRight } from "lucide-react";
-
-const userTypes: {
-  type: UserType;
-  icon: typeof Hand;
-  title: string;
-  description: string;
-  color: string;
-}[] = [
-    {
-      type: "deaf",
-      icon: Hand,
-      title: "Deaf & Hard of Hearing",
-      description: "Optimized for visual feedback.",
-      color: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    },
-    {
-      type: "non_signer",
-      icon: Users,
-      title: "Non-Signer",
-      description: "Learn sign language.",
-      color: "bg-green-500/10 text-green-600 dark:text-green-400",
-    },
-    {
-      type: "teacher_admin",
-      icon: GraduationCap,
-      title: "Teacher / Administrator",
-      description: "Facilitate inclusive learning environments.",
-      color: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
-    },
-    {
-      type: "elderly_visually_challenged",
-      icon: Eye,
-      title: "Elderly / Visually Challenged",
-      description: "Maximum accessibility.",
-      color: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-    },
-  ];
+import { Star, Loader2, LogIn, UserPlus } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (userType: UserType) => {
-    login(userType);
+  // If already authenticated, redirect to dashboard
+  if (isAuthenticated) {
+    setLocation("/student_dashboard");
+  }
 
-    if (userType === "teacher_admin") {
-      setLocation("/teacher-dashboard");
-    } else if (userType === "non_signer") {
-      setLocation("/text-to-sign");
-    } else if (userType === "elderly_visually_challenged") {
-      setLocation("/elderly-dashboard");
-    } else {
-      setLocation("/recognize");
+  const handleAuth = async (e: React.FormEvent<HTMLFormElement>, type: "login" | "register") => {
+    e.preventDefault();
+    setIsLoading(true);
+    const formData = new FormData(e.currentTarget);
+    const data = Object.fromEntries(formData);
+
+    try {
+      if (type === "login") {
+        await login(data);
+        toast({ title: "Welcome back!", description: "Successfully logged in." });
+      } else {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error("Registration failed");
+        await login({ username: data.username, password: data.password });
+        toast({ title: "Welcome to AccessEdu", description: "Account created successfully." });
+      }
+      setLocation("/student_dashboard");
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Authentication Error",
+        description: error.message || "Something went wrong. Please try again.",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <main className="flex-1 flex items-center justify-center py-12 px-4" role="main">
-      <Card className="w-full max-w-2xl" data-testid="card-auth">
-        <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <Hand className="w-8 h-8 text-primary" aria-hidden="true" />
+    <main className="min-h-[90vh] flex items-center justify-center p-4 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50">
+      <Card className="w-full max-w-md border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-white/80 backdrop-blur-xl animate-in zoom-in-95 duration-500">
+        <CardHeader className="text-center pt-10 pb-6">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-xl mb-4 transform hover:rotate-12 transition-transform">
+            <Star className="w-8 h-8 text-white fill-white" />
           </div>
-          <CardTitle className="text-2xl md:text-3xl">Choose Your Experience</CardTitle>
-          <CardDescription className="text-base max-w-md mx-auto">
-            Select the option that best describes you to personalize your AccessEdu experience.
-          </CardDescription>
+          <CardTitle className="text-3xl font-black tracking-tight text-slate-900">AccessEdu</CardTitle>
+          <CardDescription className="text-slate-500 font-medium">Empowering communication for every learner</CardDescription>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="grid sm:grid-cols-2 gap-4">
-            {userTypes.map((userType) => (
-              <Button
-                key={userType.type}
-                variant="outline"
-                className="h-auto p-6 flex flex-col items-start text-left space-y-3 hover-elevate"
-                onClick={() => handleLogin(userType.type)}
-                data-testid={`button-usertype-${userType.type}`}
-              >
-                <div className={`w-12 h-12 rounded-xl ${userType.color} flex items-center justify-center`}>
-                  <userType.icon className="w-6 h-6" aria-hidden="true" />
+
+        <CardContent className="px-8 pb-10">
+          <Tabs defaultValue="login" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-8 p-1 bg-slate-100/50 rounded-2xl">
+              <TabsTrigger value="login" className="rounded-xl font-bold py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Login</TabsTrigger>
+              <TabsTrigger value="register" className="rounded-xl font-bold py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Sign Up</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="login" className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+              <form onSubmit={(e) => handleAuth(e, "login")} className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-slate-600 font-bold ml-1">Username</Label>
+                  <Input name="username" placeholder="johndoe" required className="rounded-xl border-slate-200 focus:ring-blue-500" />
                 </div>
-                <div className="space-y-1">
-                  <p className="font-semibold text-foreground">{userType.title}</p>
-                  <p className="text-sm text-muted-foreground font-normal leading-relaxed">
-                    {userType.description}
-                  </p>
+                <div className="space-y-2">
+                  <Label className="text-slate-600 font-bold ml-1">Password</Label>
+                  <Input name="password" type="password" required className="rounded-xl border-slate-200 focus:ring-blue-500" />
                 </div>
-                <div className="flex items-center gap-1 text-primary text-sm font-medium">
-                  Continue
-                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                <Button type="submit" className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 font-bold shadow-lg shadow-blue-200 transition-all active:scale-95" disabled={isLoading}>
+                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><LogIn className="w-4 h-4 mr-2" /> Login</>}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="register" className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+              <form onSubmit={(e) => handleAuth(e, "register")} className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-slate-600 font-bold ml-1">Full Name</Label>
+                  <Input name="name" placeholder="John Doe" required className="rounded-xl border-slate-200" />
                 </div>
-              </Button>
-            ))}
-          </div>
-          <p className="text-center text-sm text-muted-foreground mt-6">
-            This is a demo experience. No account creation required.
-          </p>
+                <div className="space-y-2">
+                  <Label className="text-slate-600 font-bold ml-1">Email</Label>
+                  <Input name="email" type="email" placeholder="john@example.com" required className="rounded-xl border-slate-200" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-600 font-bold ml-1">Username</Label>
+                  <Input name="username" placeholder="johndoe123" required className="rounded-xl border-slate-200" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-600 font-bold ml-1">Password</Label>
+                  <Input name="password" type="password" required className="rounded-xl border-slate-200" />
+                </div>
+                <Button type="submit" className="w-full h-12 rounded-xl bg-purple-600 hover:bg-purple-700 font-bold shadow-lg shadow-purple-200 transition-all active:scale-95" disabled={isLoading}>
+                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><UserPlus className="w-4 h-4 mr-2" /> Create Account</>}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
         </CardContent>
+
+        <CardFooter className="bg-slate-50/50 p-6 flex flex-col gap-2 text-center border-t border-slate-100">
+           <p className="text-xs text-slate-400 font-medium tracking-wide">
+             SECURE AUTHENTICATION POWERED BY ACCESSEDU CLOUD
+           </p>
+        </CardFooter>
       </Card>
     </main>
   );

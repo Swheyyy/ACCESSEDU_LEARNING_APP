@@ -10,11 +10,8 @@ import { Header } from "@/components/header";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import AuthPage from "@/pages/auth";
-import RecognizePage from "@/pages/recognize";
-import HistoryPage from "@/pages/history";
 import TeacherDashboard from "@/pages/teacher-dashboard";
 import TextToSignPage from "@/pages/text-to-sign";
-import ElderlyDashboard from "@/pages/elderly-dashboard";
 import StudentDashboard from "@/pages/student-dashboard";
 import AdminDashboard from "@/pages/admin-dashboard";
 import LoginPage from "@/pages/login-page";
@@ -50,13 +47,15 @@ function ProtectedRoute({ component: Component }: ProtectedRouteProps) {
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={LoginPage} />
-      <Route path="/home" component={LandingPage} />
-      <Route path="/auth" component={AuthPage} />
-      <Route path="/recognize" component={RecognizePage} />
-      <Route path="/history" component={HistoryPage} />
-      <Route path="/text-to-sign" component={TextToSignPage} />
-
+      {/* Root is now the Landing Page as requested for sign-out flow */}
+      <Route path="/" component={LandingPage} />
+      
+      {/* Role Selection Page */}
+      <Route path="/auth" component={LoginPage} />
+      
+      {/* Login/Signup Form Page */}
+      <Route path="/login" component={AuthPage} />
+      
       <Route path="/student-dashboard">
         <ProtectedRoute component={StudentDashboard} path="/student-dashboard" />
       </Route>
@@ -67,15 +66,20 @@ function Router() {
         <ProtectedRoute component={AdminDashboard} path="/admin-dashboard" />
       </Route>
 
-      <Route path="/elderly-dashboard" component={ElderlyDashboard} />
-      <Route component={NotFound} />
+      <Route path="/text-to-sign" component={TextToSignPage} />
+      
+      {/* Catch-all redirect to landing page */}
+      <Route>
+        <Redirect to="/" />
+      </Route>
     </Switch>
   );
 }
 
 function App() {
   const [location] = useLocation();
-  const isDashboard = location.startsWith("/student-dashboard") ||
+  const isDashboard = location === "/" || 
+    location.startsWith("/student-dashboard") ||
     location.startsWith("/teacher-dashboard") ||
     location.startsWith("/admin-dashboard");
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,18 +15,68 @@ import {
     HelpCircle, CheckCircle, Languages, LayoutTemplate,
     Settings, Loader2, Camera, User, Star, Bell,
     Trophy, TrendingUp, Search, MoreVertical, LogOut,
-    Sparkles, BrainCircuit, ArrowRight
+    Sparkles, BrainCircuit, ArrowRight, Plus,
+    Accessibility, Sun, Moon, Monitor, Type, Eye, Gauge, Volume2,
 } from "lucide-react";
+import { useTheme } from "@/lib/theme-provider";
+import { useAccessibility } from "@/lib/accessibility-context";
+import { formatSignSentence, evaluateConfidence } from "@/lib/nlp-formatter";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function StudentDashboard() {
     const { toast } = useToast();
     const { user, logout } = useAuth();
+    const { theme, setTheme } = useTheme();
+    const { settings, setFontSize, toggleHighContrast, toggleReducedMotion } = useAccessibility();
     const [showSignOverlay, setShowSignOverlay] = useState(true);
     const [showCaptions, setShowCaptions] = useState(true);
     const [activeTab, setActiveTab] = useState("course");
     const [askingDoubt, setAskingDoubt] = useState(false);
     const [recordingDoubt, setRecordingDoubt] = useState(false);
     const [doubtText, setDoubtText] = useState("");
+    const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+    const [activeLessonIndex, setActiveLessonIndex] = useState(0);
+    const [translatedText, setTranslatedText] = useState("");
+    const [activeSentence, setActiveSentence] = useState<string[]>([]);
+    const [finalizedSentence, setFinalizedSentence] = useState<string>("");
+    const [isIdle, setIsIdle] = useState<boolean>(true);
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+    const isAudioEnabledRef = useRef(false);
+    const lastWordRef = useRef<string>("");
+    const lastWordTimeRef = useRef<number>(Date.now());
+
+    const speakCaption = (text: string) => {
+        if (!("speechSynthesis" in window) || !text || text === "Listening for sign language...") return;
+        window.speechSynthesis.cancel();
+        try {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 0.9;
+            utterance.pitch = 1.05;
+            utterance.lang = "en-US";
+            utterance.onstart = () => setIsSpeaking(true);
+            utterance.onend = () => setIsSpeaking(false);
+            utterance.onerror = () => setIsSpeaking(false);
+            window.speechSynthesis.speak(utterance);
+        } catch (e) {
+            console.error("Speech API error:", e);
+        }
+    };
+    
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const socketRef = useRef<WebSocket | null>(null);
+
+
 
     // Fetch all available courses
     const { data: allCourses = [], isLoading: loadingAll } = useQuery<Course[]>({
@@ -39,6 +89,134 @@ export default function StudentDashboard() {
     });
 
     const enrolledIds = useMemo(() => new Set(enrolledCourses.map(e => e.courseId)), [enrolledCourses]);
+
+    // Auto-select first course when data arrives
+    useEffect(() => {
+        if (!selectedCourseId && enrolledCourses.length > 0) {
+            setSelectedCourseId(enrolledCourses[0].courseId);
+        }
+    }, [enrolledCourses, selectedCourseId]);
+
+    // Fetch lessons for selected course
+    const { data: lessons = [], isLoading: loadingLessons } = useQuery<any[]>({
+        queryKey: [`/api/courses/${selectedCourseId}/lessons`],
+        enabled: !!selectedCourseId,
+    });
+
+    const currentLesson = lessons[activeLessonIndex] || null;
+
+    // WebSocket and Frame Capture Logic
+    useEffect(() => {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}/ws-recognition`;
+        console.log("Connecting to ML WebSocket:", wsUrl);
+        
+        const socket = new WebSocket(wsUrl);
+        socketRef.current = socket;
+
+        socket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.type === "CAPTION_SENTENCE" && data.sentence) {
+                    // Full sentence delivered — display it directly
+                    setFinalizedSentence(data.sentence);
+                    setActiveSentence([]);
+                    setIsIdle(false);
+                    lastWordRef.current = "";
+                    lastWordTimeRef.current = Date.now();
+
+                    // Auto-read aloud if speech synthesis is toggled ON
+                    if (isAudioEnabledRef.current) {
+                        speakCaption(data.sentence);
+                    }
+
+                } else if (data.type === "RECOGNITION_RESULT" && data.gestures?.[0]) {
+                    const newWord = data.gestures[0].categoryName;
+                    const confidence = data.gestures[0].score;
+
+                    const validWord = evaluateConfidence(newWord, confidence);
+                    if (validWord) {
+                        setTranslatedText(validWord);
+                        setIsIdle(false);
+                        // Only update the word timer on real detections — NOT on None/noise
+                        lastWordTimeRef.current = Date.now();
+                        
+                        if (validWord !== lastWordRef.current && validWord !== "None") {
+                            setActiveSentence(prev => [...prev.slice(-10), validWord]);
+                            lastWordRef.current = validWord;
+                        }
+                    }
+                    // Note: We deliberately do NOT update lastWordTimeRef for None/low-confidence frames
+                    //       so the pause detection timer fires correctly.
+                } else if (data.type === "SYSTEM_STATUS") {
+                    console.log("ML System Status:", data.message);
+                }
+            } catch (e) {
+                console.error("Error parsing WS message:", e);
+            }
+        };
+
+        socket.onerror = (error) => console.error("WS WebSocket error:", error);
+        socket.onclose = () => console.log("ML WebSocket disconnected");
+
+        return () => socket.close();
+    }, []);
+
+    // Pause Detection Loop for AI Natural Language
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            const timeSinceLast = Date.now() - lastWordTimeRef.current;
+            
+            // Sentence termination (pause of 2.5s)
+            if (timeSinceLast > 2500 && activeSentence.length > 0) {
+                const formatted = formatSignSentence(activeSentence);
+                if (formatted) {
+                    setFinalizedSentence(formatted);
+                }
+                setActiveSentence([]);
+                lastWordRef.current = "";
+            }
+            
+            // Complete idleness detected (4.5s)
+            if (timeSinceLast > 4500) {
+                setIsIdle(true);
+            }
+        }, 500);
+
+        return () => clearInterval(intervalId);
+    }, [activeSentence]);
+
+    useEffect(() => {
+        if (!showSignOverlay || !currentLesson || !videoRef.current) return;
+
+        const intervalId = setInterval(() => {
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            if (!video || !canvas || video.paused || video.ended || video.readyState < 2) return;
+
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+
+            // Draw at reduced resolution for performance
+            canvas.width = 300;
+            canvas.height = (300 / video.videoWidth) * video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+            const base64Data = dataUrl.split(",")[1];
+
+            if (socketRef.current?.readyState === WebSocket.OPEN) {
+                socketRef.current.send(JSON.stringify({
+                    type: "FRAME",
+                    image: base64Data,
+                    timestamp: Date.now()
+                }));
+            }
+        }, 2000); // 1 frame per 2s — gives enough time for each word to advance in the mock
+
+        return () => clearInterval(intervalId);
+    }, [showSignOverlay, currentLesson]);
 
     // Doubt Queries
     const { data: doubts = [] } = useQuery<any[]>({
@@ -128,15 +306,17 @@ export default function StudentDashboard() {
     return (
         <div className="flex h-screen bg-[#f8fafc]/5 overflow-hidden">
             {/* Visual Sidebar */}
-            <aside className="w-20 lg:w-64 border-r bg-white flex flex-col items-center py-6 lg:items-start lg:px-6 gap-8">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-600 rounded-lg text-white"><Sparkles className="w-6 h-6" /></div>
-                    <span className="text-xl font-black lg:block hidden">AccessEdu</span>
+            <aside className="w-20 lg:w-72 border-r bg-white flex flex-col items-center py-8 lg:items-start lg:px-8 gap-10">
+                <div className="flex items-center gap-4">
+                    <div className="p-2.5 bg-blue-600 rounded-[1.2rem] text-white shadow-lg shadow-blue-200">
+                        <Sparkles className="w-6 h-6" />
+                    </div>
+                    <span className="text-2xl font-black lg:block hidden tracking-tighter">Access<span className="text-blue-600">Edu</span></span>
                 </div>
 
-                <nav className="flex-1 w-full space-y-2">
+                <nav className="flex-1 w-full space-y-3">
                     {[
-                        { id: "course", label: "Courses", icon: BookOpen },
+                        { id: "course", label: "My Learning", icon: BookOpen },
                         { id: "path", label: "Learning Path", icon: LayoutTemplate },
                         { id: "quizzes", label: "Quizzes", icon: CheckCircle },
                         { id: "messages", label: "Teacher Chat", icon: MessageSquare },
@@ -145,23 +325,25 @@ export default function StudentDashboard() {
                         <button
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
-                            className={`w-full flex items-center justify-center lg:justify-start gap-3 p-3 rounded-xl transition-all ${activeTab === item.id ? "bg-blue-50 text-blue-600 border border-blue-100 font-bold" : "text-slate-500 hover:bg-slate-50"
-                                }`}
+                            className={`w-full flex items-center justify-center lg:justify-start gap-3.5 p-3.5 rounded-2xl transition-all duration-300 ${activeTab === item.id 
+                                ? "bg-blue-50 text-blue-600 border border-blue-100 font-bold" 
+                                : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                            }`}
                         >
-                            <item.icon className="w-5 h-5 shrink-0" />
-                            <span className="lg:block hidden">{item.label}</span>
+                            <item.icon className={`w-5 h-5 shrink-0 ${activeTab === item.id ? "text-blue-600" : ""}`} />
+                            <span className="lg:block hidden text-[15px]">{item.label}</span>
                         </button>
                     ))}
                 </nav>
 
-                <div className="w-full pt-8 border-t border-slate-100 flex flex-col gap-4">
-                    <button className="flex lg:justify-start justify-center gap-3 p-3 text-slate-500 hover:bg-slate-100 rounded-xl transition-all">
-                        <Settings className="w-5 h-5" />
-                        <span className="lg:block hidden">Settings</span>
+                <div className="w-full mt-auto space-y-2">
+                    <button className="w-full flex lg:justify-start justify-center items-center gap-3.5 p-3.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-2xl transition-all duration-300">
+                        <Settings className="w-5 h-5 shrink-0" />
+                        <span className="lg:block hidden text-[15px]">Settings</span>
                     </button>
-                    <button onClick={logout} className="flex lg:justify-start justify-center gap-3 p-3 text-red-500 hover:bg-red-50 rounded-xl transition-all">
-                        <LogOut className="w-5 h-5" />
-                        <span className="lg:block hidden">Logout</span>
+                    <button onClick={logout} className="w-full flex lg:justify-start justify-center items-center gap-3.5 p-3.5 text-red-500 hover:bg-red-50 rounded-2xl transition-all duration-300">
+                        <LogOut className="w-5 h-5 shrink-0" />
+                        <span className="lg:block hidden text-[15px]">Sign Out</span>
                     </button>
                 </div>
             </aside>
@@ -174,7 +356,90 @@ export default function StudentDashboard() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <Button variant="ghost" size="icon" className="relative">
+                        <div className="flex items-center gap-2 pr-4 border-r border-slate-200">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-slate-100 transition-colors">
+                                        <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0 text-slate-600" />
+                                        <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100 text-slate-600" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-40 rounded-2xl">
+                                    <DropdownMenuItem onClick={() => setTheme("light")} className="gap-2 font-bold cursor-pointer transition-colors">
+                                        <Sun className="h-4 w-4" /> Light
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setTheme("dark")} className="gap-2 font-bold cursor-pointer transition-colors">
+                                        <Moon className="h-4 w-4" /> Dark
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setTheme("system")} className="gap-2 font-bold cursor-pointer transition-colors">
+                                        <Monitor className="h-4 w-4" /> System
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-slate-100 transition-colors">
+                                        <Accessibility className="h-5 w-5 text-slate-600" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-72 rounded-[2rem] p-4 shadow-2xl border-none">
+                                    <DropdownMenuLabel className="flex items-center gap-3 text-lg font-black tracking-tight mb-2">
+                                        <Accessibility className="h-5 w-5 text-blue-600" /> Accessibility Hub
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator className="mb-4" />
+                                    
+                                    <div className="space-y-6">
+                                        <div className="space-y-3">
+                                            <Label className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
+                                                <Type className="h-3 w-3" /> Font Size
+                                            </Label>
+                                            <div className="flex gap-2 p-1 bg-slate-50 rounded-xl">
+                                                {(["100", "125", "150"] as const).map((size) => (
+                                                    <Button
+                                                        key={size}
+                                                        variant={settings.fontSize === size ? "default" : "ghost"}
+                                                        size="sm"
+                                                        onClick={() => setFontSize(size)}
+                                                        className={`flex-1 rounded-lg font-black text-[10px] ${settings.fontSize === size ? "bg-white text-blue-600 shadow-sm" : "text-slate-400"}`}
+                                                    >
+                                                        {size}%
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                                            <Label htmlFor="high-contrast" className="flex items-center gap-3 text-sm font-bold text-slate-700 cursor-pointer">
+                                                <Eye className="h-4 w-4 text-blue-500" /> High Contrast
+                                            </Label>
+                                            <Switch
+                                                id="high-contrast"
+                                                checked={settings.highContrast}
+                                                onCheckedChange={toggleHighContrast}
+                                            />
+                                        </div>
+
+                                        <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                                            <Label htmlFor="reduced-motion" className="flex items-center gap-3 text-sm font-bold text-slate-700 cursor-pointer">
+                                                <Gauge className="h-4 w-4 text-orange-500" /> Reduce Motion
+                                            </Label>
+                                            <Switch
+                                                id="reduced-motion"
+                                                checked={settings.reducedMotion}
+                                                onCheckedChange={toggleReducedMotion}
+                                            />
+                                        </div>
+
+                                        <p className="text-[10px] text-slate-400 font-bold italic text-center pt-2">
+                                            Settings auto-save to platform profile
+                                        </p>
+                                    </div>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+
+                        <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-xl hover:bg-slate-100 transition-colors">
                             <Bell className="w-5 h-5 text-slate-600" />
                             <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse" />
                         </Button>
@@ -191,49 +456,6 @@ export default function StudentDashboard() {
                 </header>
 
                 <div className="p-6 lg:p-10 space-y-8 max-w-7xl mx-auto">
-                    
-                    {/* Gamification Dashboard TopBar */}
-                    <div className="grid lg:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <Card className="col-span-1 lg:col-span-2 shadow-xl border-none bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-[2rem] overflow-hidden relative">
-                            <div className="absolute top-0 right-0 p-8 opacity-10">
-                                <Trophy className="w-32 h-32" />
-                            </div>
-                            <CardContent className="p-8 relative z-10 flex flex-col justify-between h-full">
-                                <div>
-                                    <Badge className="bg-white/20 hover:bg-white/30 text-white border-none mb-4">Level 3: Sign Master</Badge>
-                                    <h2 className="text-3xl font-black mb-1">Keep it up, {user?.name?.split(' ')[0]}!</h2>
-                                    <p className="text-blue-100 font-medium opacity-90">You are 150 XP away from the next tier.</p>
-                                </div>
-                                <div className="mt-8 space-y-3">
-                                    <div className="flex justify-between text-sm font-bold">
-                                        <span>450 XP</span>
-                                        <span>600 XP</span>
-                                    </div>
-                                    <Progress value={75} className="h-4 bg-black/20 [&>div]:bg-white rounded-full" />
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="shadow-lg border-none rounded-[2rem] bg-orange-50/50 relative overflow-hidden group">
-                            <CardContent className="p-8 flex flex-col items-center justify-center h-full text-center">
-                                <div className="w-16 h-16 rounded-full bg-orange-100 text-orange-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner">
-                                    <TrendingUp className="w-8 h-8" />
-                                </div>
-                                <h3 className="text-4xl font-black text-slate-800">5 <span className="text-xl text-slate-400">Days</span></h3>
-                                <p className="font-bold text-orange-600 mt-1">Learning Streak</p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="shadow-lg border-none rounded-[2rem] bg-purple-50/50 relative overflow-hidden group">
-                            <CardContent className="p-8 flex flex-col items-center justify-center h-full text-center">
-                                <div className="w-16 h-16 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner">
-                                    <Star className="w-8 h-8" />
-                                </div>
-                                <h3 className="text-4xl font-black text-slate-800">4</h3>
-                                <p className="font-bold text-purple-600 mt-1">Badges Earned</p>
-                            </CardContent>
-                        </Card>
-                    </div>
 
                     {activeTab === "course" && (
                         <div className="space-y-6">
@@ -269,8 +491,18 @@ export default function StudentDashboard() {
                                                 <CardDescription className="line-clamp-2">{e.course?.description}</CardDescription>
                                             </CardHeader>
                                             <CardFooter className="p-5 pt-0">
-                                                <Button className="w-full rounded-xl">Resume Learning</Button>
+                                                <Button 
+                                                    className={`w-full rounded-xl ${selectedCourseId === e.courseId ? "bg-blue-600 shadow-lg shadow-blue-100" : ""}`}
+                                                    onClick={() => {
+                                                        setSelectedCourseId(e.courseId);
+                                                        setActiveLessonIndex(0);
+                                                        setActiveTab("course");
+                                                    }}
+                                                >
+                                                    {selectedCourseId === e.courseId ? "Now Learning" : "Resume Learning"}
+                                                </Button>
                                             </CardFooter>
+
                                         </Card>
                                     ))}
                                 </div>
@@ -279,60 +511,173 @@ export default function StudentDashboard() {
                             <div className="space-y-6 pt-10">
                                 <div>
                                     <h2 className="text-3xl font-black tracking-tight">Active Lesson</h2>
+                                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs mt-1">Course: {enrolledCourses.find(e => e.courseId === selectedCourseId)?.course?.title || "Select a course above"}</p>
                                 </div>
+
 
                                 <div className="grid lg:grid-cols-3 gap-8">
                                 <div className="lg:col-span-2 space-y-4">
-                                    {/* Emotion-Aware Learning Alert */}
-                                    <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl flex items-start gap-4 shadow-sm animate-in slide-in-from-top-2">
-                                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                                            <BrainCircuit className="w-5 h-5 text-red-600 animate-pulse" />
-                                        </div>
-                                        <div>
-                                            <h4 className="font-black text-red-800 tracking-tight">AI Intervention Triggered</h4>
-                                            <p className="text-sm font-medium text-red-700/80 mt-1">
-                                                We noticed you spent 3x longer on the last quiz and got sequential incorrect answers. Would you like to switch to <strong className="font-extrabold cursor-pointer border-b-2 border-red-300 hover:text-red-900 transition-colors">Simplified Mode</strong> or view a <strong className="font-extrabold cursor-pointer border-b-2 border-red-300 hover:text-red-900 transition-colors">Step-by-Step Visualization</strong>?
-                                            </p>
-                                        </div>
-                                    </div>
+                                    <Card className="overflow-hidden border-2 border-blue-100/50 shadow-2xl group relative">
+                                        <div className="relative aspect-video bg-black rounded-t-xl overflow-hidden">
+                                            {currentLesson?.signVideoUrl ? (
+                                                <video 
+                                                    ref={videoRef}
+                                                    src={currentLesson.signVideoUrl} 
+                                                    className="w-full h-full object-cover" 
+                                                    controls 
+                                                    autoPlay
+                                                    muted
+                                                    onVolumeChange={(e) => {
+                                                        const vid = e.target as HTMLVideoElement;
+                                                        vid.muted = true;
+                                                    }}
+                                                    onPlay={(e) => {
+                                                        const vid = e.target as HTMLVideoElement;
+                                                        if (vid.currentTime < 1 && socketRef.current?.readyState === WebSocket.OPEN) {
+                                                            socketRef.current.send(JSON.stringify({ type: "RESET", id: `reset_${Date.now()}` }));
+                                                        }
+                                                    }}
+                                                    onSeeked={(e) => {
+                                                        const vid = e.target as HTMLVideoElement;
+                                                        if (vid.currentTime < 1 && socketRef.current?.readyState === WebSocket.OPEN) {
+                                                            socketRef.current.send(JSON.stringify({ type: "RESET", id: `reset_${Date.now()}` }));
+                                                        }
+                                                    }}
+                                                />
 
-                                    <Card className="overflow-hidden border-2 border-blue-100/50 shadow-2xl group">
-                                        <div className="relative aspect-video bg-black rounded-t-xl">
-                                            <div className="absolute inset-0 flex items-center justify-center bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                                <PlayCircle className="w-20 h-20 text-blue-500 opacity-60 group-hover:opacity-100 transition-opacity cursor-pointer shadow-2xl" />
-                                            </div>
+                                            ) : (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                                    <PlayCircle className="w-20 h-20 text-blue-500 opacity-60 group-hover:opacity-100 transition-opacity cursor-pointer shadow-2xl" />
+                                                    <div className="absolute bottom-10 text-white font-bold opacity-40">No sign video available for this lesson</div>
+                                                </div>
+                                            )}
+                                            
                                             {showCaptions && (
-                                                <div className="absolute bottom-6 left-6 right-6">
-                                                    <div className="bg-black/90 p-4 rounded-xl border border-white/20 text-center">
-                                                        <p className="text-yellow-400 font-black text-xl leading-relaxed">
-                                                            The Sun is a yellow dwarf star, a hot ball of glowing gases at the heart of our solar system.
+                                                <div className="absolute bottom-10 left-10 right-10 z-20 animate-in fade-in slide-in-from-bottom-2 duration-700">
+                                                    <div className="bg-black/80 backdrop-blur-md p-6 rounded-[2rem] border border-white/10 text-center shadow-2xl">
+                                                        <div className="flex items-center justify-between gap-2 mb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                                                <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">AI Realtime Translation</span>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newState = !isAudioEnabled;
+                                                                    setIsAudioEnabled(newState);
+                                                                    isAudioEnabledRef.current = newState;
+                                                                    if (newState && finalizedSentence) {
+                                                                        speakCaption(finalizedSentence);
+                                                                    } else if (!newState) {
+                                                                        window.speechSynthesis.cancel();
+                                                                        setIsSpeaking(false);
+                                                                    }
+                                                                }}
+                                                                title={isAudioEnabled ? "Auto-read enabled (click to disable)" : "Auto-read disabled (click to enable)"}
+                                                                className={`w-auto px-3 h-7 rounded-full flex items-center justify-center gap-1.5 transition-all text-xs font-bold ${
+                                                                    isAudioEnabled 
+                                                                    ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20" 
+                                                                    : "bg-white/10 text-white/50 hover:bg-white/20 hover:text-white"
+                                                                }`}
+                                                            >
+                                                                <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? "animate-pulse" : ""}`} />
+                                                                {isAudioEnabled ? "Voice ON" : "Voice OFF"}
+                                                            </button>
+                                                        </div>
+                                                        <p className="text-white font-black text-2xl leading-relaxed tracking-tight italic min-h-[4rem] flex items-center justify-center">
+                                                            {currentLesson ? (
+                                                                isIdle ? (
+                                                                    finalizedSentence || "Listening for sign language..."
+                                                                ) : (
+                                                                    activeSentence.length > 0 
+                                                                        ? formatSignSentence(activeSentence)
+                                                                        : (finalizedSentence || "Listening...")
+                                                                )
+                                                            ) : "Please select a course to start learning."}
                                                         </p>
+
+
                                                     </div>
                                                 </div>
                                             )}
-                                            {showSignOverlay && (
-                                                <div className="absolute right-6 top-6 w-1/3 aspect-video bg-white/10 backdrop-blur-xl rounded-2xl border border-white/30 overflow-hidden shadow-2xl ring-4 ring-black/20">
+
+                                            {showSignOverlay && currentLesson && (
+                                                <div className="absolute right-6 top-6 w-1/4 aspect-square bg-white/10 backdrop-blur-3xl rounded-[2.5rem] border border-white/20 overflow-hidden shadow-2xl ring-4 ring-black/20 group">
+                                                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent"></div>
                                                     <div className="absolute inset-0 flex items-center justify-center">
-                                                        <User className="w-16 h-16 text-white/40" />
+                                                        <canvas ref={canvasRef} className="hidden" />
+                                                        <BrainCircuit className="w-12 h-12 text-white/40 animate-pulse" />
                                                     </div>
-                                                    <div className="absolute bottom-2 right-2"><Badge variant="outline" className="text-[8px] bg-black/40 border-none text-white uppercase tracking-widest">ASL Live</Badge></div>
+                                                    <div className="absolute bottom-4 left-0 right-0 text-center">
+                                                        <Badge variant="outline" className="text-[8px] bg-blue-600/80 backdrop-blur-sm border-none text-white uppercase tracking-widest px-3 py-1 font-black">AI Interpreter Live</Badge>
+                                                    </div>
                                                 </div>
                                             )}
+
                                         </div>
-                                        <div className="p-6 bg-white flex items-center justify-between">
+                                        <div className="p-8 bg-white flex flex-col md:flex-row items-center justify-between gap-6 border-t border-slate-50">
                                             <div className="flex gap-4">
-                                                <Button variant={showCaptions ? "default" : "outline"} className="gap-2 rounded-full px-6" onClick={() => setShowCaptions(!showCaptions)}>
-                                                    <Languages className="w-4 h-4" /> Captions
+                                                <Button 
+                                                    variant={showCaptions ? "default" : "outline"} 
+                                                    className={`gap-3 rounded-full px-8 h-14 font-black transition-all ${showCaptions ? "bg-blue-600 shadow-xl shadow-blue-100" : "hover:bg-blue-50"}`} 
+                                                    onClick={() => setShowCaptions(!showCaptions)}
+                                                >
+                                                    <Languages className="w-5 h-5" /> {showCaptions ? "Captions On" : "Captions Off"}
                                                 </Button>
-                                                <Button variant={showSignOverlay ? "default" : "outline"} className="gap-2 rounded-full px-6" onClick={() => setShowSignOverlay(!showSignOverlay)}>
-                                                    <Video className="w-4 h-4" /> Sign Avatar
+                                                <Button 
+                                                    variant={showSignOverlay ? "default" : "outline"} 
+                                                    className={`gap-3 rounded-full px-8 h-14 font-black transition-all ${showSignOverlay ? "bg-slate-900 text-white shadow-xl shadow-slate-200" : "hover:bg-slate-50"}`} 
+                                                    onClick={() => setShowSignOverlay(!showSignOverlay)}
+                                                >
+                                                    <Video className="w-5 h-5" /> {showSignOverlay ? "AI Display On" : "AI Display Off"}
                                                 </Button>
                                             </div>
-                                            <Button variant="secondary" className="gap-2 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border-none" onClick={() => setAskingDoubt(true)}>
-                                                <HelpCircle className="w-5 h-5" /> Doubt Solver
-                                            </Button>
+                                            <div className="flex items-center gap-4">
+                                                <Button 
+                                                    variant="secondary" 
+                                                    className="gap-3 rounded-full h-14 px-8 bg-amber-50 text-amber-700 hover:bg-amber-100 border-none font-black shadow-lg shadow-amber-900/5" 
+                                                    onClick={() => setAskingDoubt(true)}
+                                                >
+                                                    <HelpCircle className="w-5 h-5" /> Doubt Solver
+                                                </Button>
+                                                {lessons.length > 1 && (
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        className="rounded-full h-14 w-14 p-0 hover:bg-slate-100"
+                                                        onClick={() => setActiveLessonIndex((prev) => (prev + 1) % lessons.length)}
+                                                    >
+                                                        <ArrowRight className="w-6 h-6" />
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                     </Card>
+
+                                    {/* AI Interpretation Section */}
+                                    {showCaptions && currentLesson?.transcript && (
+                                        <Card className="border-none shadow-xl rounded-[3rem] bg-white p-10 overflow-hidden relative group hover:shadow-2xl transition-all duration-500 mt-8 mb-4">
+                                            <div className="absolute top-0 left-0 w-3 h-full bg-blue-600 group-hover:bg-purple-600 transition-colors"></div>
+                                            <div className="flex items-center justify-between mb-8">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 transform group-hover:rotate-6 transition-transform">
+                                                        <Languages className="w-7 h-7" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-2xl font-black tracking-tight text-slate-900 leading-none">AI Interpretation</h3>
+                                                        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-black mt-1">Lesson Context Transcript</p>
+                                                    </div>
+                                                </div>
+                                                <Badge className="bg-green-50 text-green-600 border-none font-black px-5 py-2 rounded-full uppercase text-[10px] tracking-widest shadow-sm">Verified by AI Model</Badge>
+                                            </div>
+                                            <div className="bg-slate-50/50 p-8 rounded-[2rem] border border-slate-100">
+                                                <p className="text-2xl leading-relaxed text-slate-700 font-bold italic tracking-tight">
+                                                    <span className="text-4xl text-blue-300 font-serif leading-none mr-2">“</span>
+                                                    {currentLesson.transcript}
+                                                    <span className="text-4xl text-blue-300 font-serif leading-none ml-2">”</span>
+                                                </p>
+                                            </div>
+                                        </Card>
+                                    )}
+
 
                                     {askingDoubt && (
                                         <Card className="border-blue-400 shadow-xl animate-in slide-in-from-top-4 duration-300">
@@ -395,25 +740,22 @@ export default function StudentDashboard() {
                                 </div>
 
                                 <div className="space-y-6">
-                                    <Card className="h-full border-none shadow-xl bg-gradient-to-br from-white to-indigo-50/50">
+                                    <Card className="h-full border-none shadow-xl bg-gradient-to-br from-white to-blue-50/30">
                                         <CardHeader>
-                                            <div className="flex items-center justify-between mb-2">
-                                                <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-none"><Sparkles className="w-3 h-3 mr-1" /> AI Generated</Badge>
-                                            </div>
-                                            <CardTitle className="text-2xl font-black text-indigo-900 tracking-tight">Visual Concept Engine</CardTitle>
-                                            <CardDescription className="font-medium text-slate-500">Our AI has translated this lesson into visual infographics to aid comprehension.</CardDescription>
+                                            <CardTitle className="flex items-center gap-2"><BookOpen className="w-5 h-5 text-blue-600" /> Visual Notes</CardTitle>
+                                            <CardDescription>Simplified content for quick review.</CardDescription>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
-                                            <div className="p-4 bg-white/80 backdrop-blur-sm rounded-[2rem] border border-white space-y-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                                            <div className="p-4 bg-white rounded-2xl border border-slate-100 space-y-3 shadow-sm">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black shadow-inner">1</div>
-                                                    <span className="font-bold text-lg text-slate-800">Gravity Mechanics</span>
+                                                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
+                                                    <span className="font-bold">Gravity Concept</span>
                                                 </div>
-                                                <div className="bg-slate-50/50 p-6 rounded-2xl flex flex-col items-center gap-3 border border-slate-100 shadow-inner">
-                                                    <div className="flex gap-4 items-center animate-pulse">
-                                                        <span className="text-5xl">🌎</span>
-                                                        <span className="text-2xl font-black text-slate-300">⬅</span>
-                                                        <span className="text-5xl shrink-0">🍏</span>
+                                                <div className="bg-slate-50 p-6 rounded-xl flex flex-col items-center gap-3 border border-slate-100">
+                                                    <div className="flex gap-4 items-center">
+                                                        <span className="text-4xl">🌎</span>
+                                                        <span className="text-xl text-slate-300">⬅</span>
+                                                        <span className="text-4xl shrink-0">🍏</span>
                                                     </div>
                                                     <p className="text-xs text-center font-medium text-slate-500 uppercase tracking-wider">Earth pulls things down.</p>
                                                 </div>
@@ -465,6 +807,75 @@ export default function StudentDashboard() {
                                     </Card>
                                 ))}
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === "messages" && (
+                        <div className="space-y-8 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="flex justify-between items-end">
+                                <div>
+                                    <h2 className="text-4xl font-black tracking-tight">Teacher Chat</h2>
+                                    <p className="text-slate-500 font-medium">Ask questions and get help from your instructors.</p>
+                                </div>
+                                <Button 
+                                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl px-8 py-6 h-auto font-bold shadow-lg transform hover:scale-105 transition-all"
+                                    onClick={() => setAskingDoubt(true)}
+                                >
+                                    <Plus className="w-5 h-5 mr-2" /> New Question
+                                </Button>
+                            </div>
+
+                            {doubts.length === 0 ? (
+                                <Card className="p-20 text-center border-dashed border-2 bg-slate-50/50 rounded-[3rem]">
+                                    <MessageSquare className="w-20 h-20 mx-auto text-slate-200 mb-6" />
+                                    <h3 className="text-2xl font-black text-slate-400">No messages yet</h3>
+                                    <p className="text-slate-500 max-w-sm mx-auto mt-2">Questions you ask your teacher will appear here along with their responses.</p>
+                                    <Button variant="ghost" className="mt-6 text-blue-600 font-bold" onClick={() => setAskingDoubt(true)}>Start a conversation</Button>
+                                </Card>
+                            ) : (
+                                <div className="grid gap-6">
+                                    {doubts.map(doubt => (
+                                        <Card key={doubt.id} className="border-none shadow-xl hover:shadow-2xl transition-all duration-300 rounded-[2rem] overflow-hidden bg-white group">
+                                            <div className="p-8 space-y-6">
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 font-black text-lg shadow-inner">
+                                                            {user?.name?.[0]}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-slate-900 leading-tight">Your Question</p>
+                                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{new Date(doubt.createdAt).toLocaleString()}</p>
+                                                        </div>
+                                                    </div>
+                                                    <Badge className={doubt.response ? "bg-green-100 text-green-700 hover:bg-green-200 border-none px-4 py-1.5 rounded-full font-bold" : "bg-orange-100 text-orange-700 hover:bg-orange-200 border-none px-4 py-1.5 rounded-full font-bold"}>
+                                                        {doubt.response ? "Answered" : "Awaiting Response"}
+                                                    </Badge>
+                                                </div>
+                                                
+                                                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100/50 group-hover:bg-slate-100/50 transition-colors">
+                                                    <p className="text-lg font-medium text-slate-800 leading-relaxed italic">"{doubt.content}"</p>
+                                                </div>
+
+                                                {doubt.response && (
+                                                    <div className="pt-6 border-t border-slate-100 animate-in fade-in zoom-in-95 duration-500">
+                                                        <div className="flex items-start gap-4">
+                                                            <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg">
+                                                                <Star className="w-5 h-5" />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <p className="font-black text-[10px] uppercase tracking-widest text-purple-600">Instructor's Response</p>
+                                                                <div className="p-6 bg-purple-50 rounded-2xl border border-purple-100 text-purple-900 font-medium leading-relaxed">
+                                                                    {doubt.response}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 
