@@ -28,6 +28,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { SignAvatar } from "@/components/sign-avatar";
+import { useRef, useEffect } from "react";
 import { useTheme } from "@/lib/theme-provider";
 import { useAccessibility } from "@/lib/accessibility-context";
 import {
@@ -737,6 +739,95 @@ function EnrolledStudentsTable({ courseId, courseTitle }: { courseId: number, co
 
 function DoubtCard({ doubt, onRespond, isPending }: { doubt: any, onRespond: (resp: string) => void, isPending: boolean }) {
     const [response, setResponse] = useState("");
+    const [isSigning, setIsSigning] = useState(false);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const wsRef = useRef<WebSocket | null>(null);
+    const intervalRef = useRef<number | null>(null);
+    const { toast } = useToast();
+
+    // Clean up on unmount
+    useEffect(() => {
+        return () => {
+            if (wsRef.current) wsRef.current.close();
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            if (videoRef.current && videoRef.current.srcObject) {
+                const stream = videoRef.current.srcObject as MediaStream;
+                stream.getTracks().forEach(track => track.stop());
+            }
+        };
+    }, []);
+
+    const toggleSignLanguage = async () => {
+        if (isSigning) {
+            setIsSigning(false);
+            if (wsRef.current) wsRef.current.close();
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            if (videoRef.current && videoRef.current.srcObject) {
+                const stream = videoRef.current.srcObject as MediaStream;
+                stream.getTracks().forEach(track => track.stop());
+            }
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            }
+            setIsSigning(true);
+            
+            const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+            const wsUrl = `${protocol}//${window.location.host}/ws-recognition`;
+            const ws = new WebSocket(wsUrl);
+            wsRef.current = ws;
+
+            ws.onopen = () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = 224;
+                canvas.height = 224;
+                const ctx = canvas.getContext("2d");
+
+                intervalRef.current = window.setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN && videoRef.current && ctx) {
+                        ctx.drawImage(videoRef.current, 0, 0, 224, 224);
+                        const data = canvas.toDataURL("image/jpeg", 0.7);
+                        ws.send(JSON.stringify({
+                            type: "FRAME",
+                            image: data.split(",")[1] || data
+                        }));
+                    }
+                }, 500);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === "RECOGNITION_RESULT" && data.gestures?.[0]) {
+                        const word = data.gestures[0].categoryName;
+                        const score = data.gestures[0].score;
+                        if (word !== "None" && score > 0.45) { // tuned for response flow
+                            setResponse(prev => {
+                                const lastWord = prev.trim().split(" ").pop();
+                                if (lastWord === word) return prev; // avoid immediate dupes
+                                return prev ? `${prev} ${word}` : word;
+                            });
+                        }
+                    }
+                } catch (e) {
+                   console.error("Teacher ML Parse Error", e);
+                }
+            };
+
+            ws.onerror = (e) => {
+                console.error("ML WebSocket Error", e);
+                toast({ title: "WebSocket Error", description: "Successfully caught AI stream disconnection. Trying again.", variant: "destructive" });
+                setIsSigning(false);
+            };
+        } catch (e) {
+            console.error(e);
+            toast({ title: "Camera Error", description: "Could not access teacher camera", variant: "destructive" });
+        }
+    };
 
     return (
         <Card className="border-none shadow-2xl rounded-[3rem] bg-white overflow-hidden group hover:shadow-purple-900/5 transition-all duration-500">
@@ -756,6 +847,12 @@ function DoubtCard({ doubt, onRespond, isPending }: { doubt: any, onRespond: (re
                 <div className="p-8 bg-white rounded-[2rem] border-2 border-slate-100/50 shadow-sm relative overflow-hidden group-hover:border-purple-100 transition-colors">
                     <div className="absolute top-4 left-4"><Bot className="w-5 h-5 text-purple-200" /></div>
                     <p className="text-xl font-bold text-slate-800 italic leading-relaxed pl-6 tracking-tight">"{doubt.content}"</p>
+                    <div className="mt-6 border-t border-slate-100 pt-6">
+                        <Label className="font-black text-[10px] uppercase tracking-widest text-slate-400 mb-2 block">Student's query dynamically signed</Label>
+                        <div className="aspect-video bg-muted rounded-xl overflow-hidden relative border border-slate-200">
+                            <SignAvatar text={doubt.content} trigger={true} />
+                        </div>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent className="p-10 space-y-6">
@@ -768,14 +865,34 @@ function DoubtCard({ doubt, onRespond, isPending }: { doubt: any, onRespond: (re
                     </div>
                 ) : (
                     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-                        <div className="space-y-2">
-                            <Label className="font-black text-[10px] uppercase tracking-widest text-slate-400 ml-1">Craft your explanation</Label>
-                            <Textarea 
-                                placeholder="Type your detailed explanation here..." 
-                                className="rounded-[2.5rem] border-2 border-slate-100 p-8 min-h-[160px] focus:ring-purple-500 focus:border-purple-500 text-lg font-medium leading-relaxed transition-all"
-                                value={response}
-                                onChange={(e) => setResponse(e.target.value)}
-                            />
+                        <div className="space-y-2 relative">
+                            <Label className="font-black text-[10px] uppercase tracking-widest text-slate-400 ml-1">Craft your explanation / Use Sign Language</Label>
+                            
+                            <div className="relative">
+                                {isSigning ? (
+                                    <div className="aspect-video bg-black rounded-[2.5rem] overflow-hidden relative mb-4">
+                                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+                                        <div className="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full animate-pulse flex items-center gap-2">
+                                            <div className="w-2 h-2 bg-white rounded-full"></div> Recording Sign
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                <Textarea 
+                                    placeholder="Type your detailed explanation or enable camera to sign..." 
+                                    className="rounded-[2.5rem] border-2 border-slate-100 p-8 min-h-[160px] focus:ring-purple-500 focus:border-purple-500 text-lg font-medium leading-relaxed transition-all pb-16"
+                                    value={response}
+                                    onChange={(e) => setResponse(e.target.value)}
+                                />
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={toggleSignLanguage}
+                                    className={`absolute bottom-4 right-4 rounded-full h-10 w-10 transition-colors ${isSigning ? 'bg-red-100 text-red-600 border-red-200 hover:bg-red-200' : 'bg-purple-100 text-purple-600 border-purple-200 hover:bg-purple-200'}`}
+                                >
+                                    <Video className="w-5 h-5" />
+                                </Button>
+                            </div>
                         </div>
                         <Button 
                             className="w-full h-16 rounded-full bg-purple-600 hover:bg-purple-700 font-black text-lg shadow-xl shadow-purple-200 transition-all active:scale-95"
