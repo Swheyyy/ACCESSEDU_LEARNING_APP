@@ -41,18 +41,9 @@ export async function processVideoAsync(lessonId: number, relativeVideoPath: str
                 log(`Failed to parse ML output for Lesson ${lessonId}: ${e}. Raw output: ${output}`, "error");
                 await storage.updateLesson(lessonId, { processingStatus: "failed" });
             }
+        } else {
             log(`ML Process exited with code ${code} for Lesson ${lessonId}. Error: ${errorOutput}`, "error");
-            log(`Falling back to Fast Mock ML Server transcript generation due to local Python environment errors...`, "warning");
-            
-            // Mock Transcript generation for demo purposes when python environment fails
-            setTimeout(async () => {
-                const mockTranscript = "Testing the sign language interpretation pipeline. The machine learning model recognizes the gestures and converts them into text for educational accessibility.";
-                await storage.updateLesson(lessonId, { 
-                    transcript: mockTranscript,
-                    processingStatus: "completed" 
-                });
-                log(`Successfully processed Lesson ${lessonId} using FAST MOCK INFERENCE. Transcript generated.`);
-            }, 3000);
+            await storage.updateLesson(lessonId, { processingStatus: "failed" });
         }
     });
 }

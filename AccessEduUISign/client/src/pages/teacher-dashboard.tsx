@@ -83,6 +83,22 @@ export default function TeacherDashboard() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: [`/api/courses/teacher/${user?.id}`] });
+            
+            // Broadcast COURSE_UPDATED event to all connected students via WebSocket
+            const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+            const wsUrl = `${protocol}//${window.location.host}/ws-recognition`;
+            const broadcastSocket = new WebSocket(wsUrl);
+            broadcastSocket.onopen = () => {
+              const stateEvent = {
+                type: "state_broadcast",
+                eventType: "COURSE_UPDATED",
+                payload: { timestamp: new Date().toISOString() }
+              };
+              broadcastSocket.send(JSON.stringify(stateEvent));
+              console.log("[v0] COURSE_UPDATED broadcast sent");
+              broadcastSocket.close();
+            };
+            
             toast({ title: "Success", description: "Course created successfully!" });
             setIsCreateDialogOpen(false);
             setNewCourse({ title: "", description: "", tags: "" });

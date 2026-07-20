@@ -118,6 +118,19 @@ export default function StudentDashboard() {
             try {
                 const data = JSON.parse(event.data);
 
+                // Handle state change broadcasts (hybrid sync)
+                if (data.type === "COURSE_UPDATED") {
+                  console.log("[v0] COURSE_UPDATED event received, invalidating courses cache");
+                  // Immediately invalidate the courses query to clear cache and update dashboard in <2s
+                  queryClient.invalidateQueries({ queryKey: ["/api/courses"] });
+                  queryClient.invalidateQueries({ queryKey: ["/api/enrollments"] });
+                  toast({
+                    title: "Course Updated",
+                    description: "New courses are now available. Dashboard refreshing..."
+                  });
+                  return;
+                }
+
                 if (data.type === "CAPTION_SENTENCE" && data.sentence) {
                     // Full sentence delivered — display it directly
                     setFinalizedSentence(data.sentence);

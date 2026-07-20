@@ -16,6 +16,7 @@ import progressRoutes from "./routes/progress.routes";
 import quizRoutes from "./routes/quiz.routes";
 import lessonRoutes from "./routes/lesson.routes";
 import enrollmentRoutes from "./routes/enrollment.routes";
+import videoRoutes from "./routes/video.routes";
 
 export async function registerRoutes(httpServer: Server, app: Express) {
   // 1. API Routes
@@ -28,6 +29,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   app.use("/api/progress", progressRoutes);
   app.use("/api/quizzes", quizRoutes);
   app.use("/api/enrollments", enrollmentRoutes);
+  app.use("/api/video", videoRoutes);
 
   // 2. AI Bridge Setup
   const PYTHON_PATH = "python";
@@ -98,14 +100,38 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     path: "/ws-recognition"
   });
 
+  // Track all active clients for state broadcast pub/sub
+  const activeClients = new Set<WebSocket>();
+
   wss.on("connection", (ws: WebSocket) => {
     log("Inbound Recognition Connection Established");
+    activeClients.add(ws);
 
     ws.on("message", (data) => {
-      if (pyProcess && pyProcess.stdin?.writable) {
-        try {
-          const msg = data.toString();
-          const parsed = JSON.parse(msg);
+      try {
+        const msg = data.toString();
+        const parsed = JSON.parse(msg);
+        
+        // Event channel parser: handle state change broadcasts
+        if (parsed.type === "state_broadcast") {
+          // Broadcast state change event to all active student clients
+          const stateEvent = {
+            type: parsed.eventType, // e.g., "COURSE_UPDATED"
+            payload: parsed.payload,
+            timestamp: new Date().toISOString()
+          };
+          
+          activeClients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN && client !== ws) {
+              client.send(JSON.stringify(stateEvent));
+            }
+          });
+          log(`[STATE BROADCAST] ${parsed.eventType} sent to ${activeClients.size} clients`);
+          return;
+        }
+
+        // Handle ML frame inference (original logic)
+        if (parsed.type === 'frame' && pyProcess && pyProcess.stdin?.writable) {
           const reqId = parsed.id || `req_${Date.now()}`;
           parsed.id = reqId; // Ensure the ID is always sent to Python
           
@@ -117,15 +143,16 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           });
 
           pyProcess.stdin.write(JSON.stringify(parsed) + "\n");
-        } catch (e) {
-          log(`Error processing websocket message: ${e}`, "error");
+        } else if (parsed.type === 'frame') {
+          log("ML Server not available, skipping message", "warning");
         }
-      } else {
-        log("ML Server not available, skipping message", "warning");
+      } catch (e) {
+        log(`Error processing websocket message: ${e}`, "error");
       }
     });
 
     ws.on("close", () => {
+      activeClients.delete(ws);
       log("Recognition Hub Connection Closed");
     });
   });

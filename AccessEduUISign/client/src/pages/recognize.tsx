@@ -47,26 +47,7 @@ type InputMode = "webcam" | "video" | "image";
 
 const ASL_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-function simulateRecognition(): RecognitionResult {
-  const words = ["Hello", "Thank you", "Please", "Yes", "No", "Good", "Help", "Sorry", "Welcome", "Friend"];
-  const randomWord = words[Math.floor(Math.random() * words.length)];
-  const confidence = 75 + Math.random() * 25;
-  return {
-    text: randomWord,
-    confidence: Math.round(confidence * 10) / 10,
-    timestamp: new Date(),
-  };
-}
 
-function simulateLetterRecognition(): RecognitionResult {
-  const randomLetter = ASL_LETTERS[Math.floor(Math.random() * ASL_LETTERS.length)];
-  const confidence = 80 + Math.random() * 20;
-  return {
-    text: randomLetter,
-    confidence: Math.round(confidence * 10) / 10,
-    timestamp: new Date(),
-  };
-}
 
 export default function RecognizePage() {
   const { isAuthenticated, user } = useAuth();
@@ -181,6 +162,19 @@ export default function RecognizePage() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'recognition') {
+          // Enforce >=0.80 confidence threshold validation barrier
+          if (data.confidence < 80) {
+            const noSignResult: RecognitionResult = {
+              text: "No Sign Detected",
+              confidence: 0,
+              timestamp: new Date(),
+              predictions: [],
+              process_time: data.process_time
+            };
+            setCurrentResult(noSignResult);
+            return;
+          }
+
           const result: RecognitionResult = {
             text: data.text,
             confidence: data.confidence,
